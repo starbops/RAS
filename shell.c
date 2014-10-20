@@ -6,12 +6,17 @@
 
 #define SERV_PORT 5140
 #define BUFF_SIZE 4096
+#define WELCOME "****************************************\n** Welcome to the information server. **\n****************************************\n"
+#define PROMPT "% "
 
+int send_msg(int, char *, char *);
 int readline(int, char *, int);
+void conn_handler(int, char *);
 
 int main(int argc, char *argv[]) {
     char buff[BUFF_SIZE];
     int listenfd = 0;
+    int optval = 1;
     int connfd = 0;
     int clilen = 0;
     int fake_pid = 0;
@@ -24,8 +29,9 @@ int main(int argc, char *argv[]) {
         perror("server: socket error");
         exit(-1);
     }
-    memset(&serv_addr, 0, sizeof(serv_addr));
+    setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 
+    memset(&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     serv_addr.sin_port = htons(SERV_PORT);
@@ -52,9 +58,7 @@ int main(int argc, char *argv[]) {
                 perror("server: fork error");
             } else if(conn_pid == 0) {          /* actual child process */
                 close(listenfd);
-                memset(buff, 0, BUFF_SIZE);
-                strcpy(buff, "Hello there");
-                write(connfd, buff, strlen(buff));
+                conn_handler(connfd, buff);
                 exit(0);
             } else {
                 exit(0);
@@ -68,12 +72,35 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-int readline(int fd, char *cptr, int maxlen) {
+int send_msg(int fd, char *buff, char *msg) {
     int n = 0;
-    if((n = read(fd, cptr, maxlen)) > 0) {
-        printf("%s", cptr);
-    } else if(n < 0) {
-        perror("server: read error");
+    if(buff == msg) {
+        if((n = write(fd, buff, strlen(msg))) < 0)
+            perror("server: write error");
+    } else {
+        memset(buff, 0, BUFF_SIZE);
+        strncpy(buff, msg, strlen(msg));
+        if((n = write(fd, buff, strlen(msg))) < 0)
+            perror("server: write error");
     }
     return n;
+}
+
+int readline(int fd, char *buff, int maxlen) {
+    int n = 0;
+    memset(buff, 0, BUFF_SIZE);
+    if((n = read(fd, buff, maxlen)) < 0)
+        perror("server: read error");
+    return n;
+}
+
+void conn_handler(int fd, char *buff) {
+    send_msg(fd, buff, WELCOME);
+    send_msg(fd, buff, PROMPT);
+    while(1) {
+        readline(fd, buff, BUFF_SIZE);
+        send_msg(fd, buff, buff);
+        send_msg(fd, buff, PROMPT);
+    }
+    return;
 }
