@@ -12,7 +12,9 @@ int main(int argc, char *argv[]) {
     int listenfd = 0;
     int connfd = 0;
     int clilen = 0;
+    int fake_pid = 0;
     int conn_pid = 0;
+    int status = 0;
     struct sockaddr_in serv_addr;
     struct sockaddr_in conn_addr;
 
@@ -41,16 +43,23 @@ int main(int argc, char *argv[]) {
         if((connfd = accept(listenfd, (struct sockaddr *)&conn_addr, (socklen_t *)&clilen)) < 0) {
             perror("server: accept error");
         }
-        if((conn_pid = fork()) < 0) {           /* fork error */
+        if((fake_pid = fork()) < 0) {           /* fork error */
             perror("server: fork error");
-        } else if(conn_pid == 0) {              /* child process */
-            close(listenfd);
-            memset(buff, 0, BUFF_SIZE);
-            strcpy(buff, "Hello there");
-            write(connfd, buff, strlen(buff));
-            exit(0);
+        } else if(fake_pid == 0) {              /* fake child process */
+            if((conn_pid = fork()) < 0) {
+                perror("server: fork error");
+            } else if(conn_pid == 0) {          /* actual child process */
+                close(listenfd);
+                memset(buff, 0, BUFF_SIZE);
+                strcpy(buff, "Hello there");
+                write(connfd, buff, strlen(buff));
+                exit(0);
+            } else {
+                exit(0);
+            }
         } else {                                /* parent process */
             close(connfd);
+            waitpid(fake_pid, &status, 0);
         }
     }
 
