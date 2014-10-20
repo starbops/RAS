@@ -7,6 +7,8 @@
 #define SERV_PORT 5140
 #define BUFF_SIZE 4096
 
+int readline(int, char *, int);
+
 int main(int argc, char *argv[]) {
     char buff[BUFF_SIZE];
     int listenfd = 0;
@@ -64,4 +66,14 @@ int main(int argc, char *argv[]) {
     }
 
     return 0;
+}
+
+int readline(int fd, char *cptr, int maxlen) {
+    int n = 0;
+    if((n = read(fd, cptr, maxlen)) > 0) {
+        printf("%s", cptr);
+    } else if(n < 0) {
+        perror("server: read error");
+    }
+    return n;
 }
