@@ -93,19 +93,18 @@ int readline(int fd, char *buff) {
     memset(buff, 0, BUFF_SIZE);
     if((n = read(fd, buff, BUFF_SIZE)) < 0)
         perror("server: read error");
-    else {
-        buff[n-2] = '\0';
-    }
+    else
+        buff[n-1] = '\0';
     return n;
 }
 
 int parsecmd(char *buff, char *cmds[]) {
     char *pch = NULL;
     int i = 0;
-    pch = strtok(buff, " \t");
+    pch = strtok(buff, " \n\r\t");
     for(i = 0; pch != NULL; i++) {
         cmds[i] = pch;
-        pch = strtok(NULL, " \t");
+        pch = strtok(NULL, " \n\r\t");
     }
     return i;
 }
@@ -113,7 +112,6 @@ int parsecmd(char *buff, char *cmds[]) {
 void conn_handler(int fd, char *buff) {
     char *cmds[MAX_CMD_COUNT];
     int cmd_count = 0;
-    int i = 0;
     send_msg(fd, buff, WELCOME);
     while(1) {
         send_msg(fd, buff, PROMPT);
