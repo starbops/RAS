@@ -6,13 +6,14 @@
 
 #define SERV_PORT 5140
 #define BUFF_SIZE 10240
-#define MAX_CMD_COUNT 10240
+#define CMDLINE_LENGTH 10240
+#define CMD_NUMBER 256
 #define WELCOME "****************************************\n** Welcome to the information server. **\n****************************************\n"
 #define PROMPT "% "
 
 int send_msg(int, char *, char *);
-int readline(int, char *);
-int parsecmd(char *, char *[]);
+int read_line(int, char *);
+int parse_cmd(char *, char *[]);
 void conn_handler(int, char *);
 
 int main(int argc, char *argv[]) {
@@ -88,17 +89,19 @@ int send_msg(int fd, char *buff, char *msg) {
     return n;
 }
 
-int readline(int fd, char *buff) {
+int read_line(int fd, char *buff) {
     int n = 0;
     memset(buff, 0, BUFF_SIZE);
     if((n = read(fd, buff, BUFF_SIZE)) < 0)
         perror("server: read error");
+    else if(n == 0)
+        n = 0;
     else
         buff[n-1] = '\0';
     return n;
 }
 
-int parsecmd(char *buff, char *cmds[]) {
+int parse_cmd(char *buff, char *cmds[]) {
     char *pch = NULL;
     int i = 0;
     pch = strtok(buff, " \n\r\t");
@@ -110,13 +113,14 @@ int parsecmd(char *buff, char *cmds[]) {
 }
 
 void conn_handler(int fd, char *buff) {
-    char *cmds[MAX_CMD_COUNT];
+    char *cmds[CMDLINE_LENGTH];
     int cmd_count = 0;
     send_msg(fd, buff, WELCOME);
     while(1) {
         send_msg(fd, buff, PROMPT);
-        readline(fd, buff);
-        cmd_count = parsecmd(buff, cmds);
+        if(read_line(fd, buff) == 0)
+            break;
+        cmd_count = parse_cmd(buff, cmds);
         send_msg(fd, buff, buff);
     }
     return;
