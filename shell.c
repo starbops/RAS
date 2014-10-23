@@ -7,13 +7,20 @@
 #define SERV_PORT 5140
 #define BUFF_SIZE 10240
 #define CMDLINE_LENGTH 10240
-#define CMD_NUMBER 256
+#define SINGLE_CMD_WORD 256
 #define WELCOME "****************************************\n** Welcome to the information server. **\n****************************************\n"
 #define PROMPT "% "
 
+struct cmd {
+    char **argv;
+    int argc;
+    int is_piped;
+};
+
 int send_msg(int, char *, char *);
 int read_line(int, char *);
-int parse_cmd(char *, char *[]);
+int parse_cmd(char *, struct cmd []);
+void clear_cmd(struct cmd [], int);
 void conn_handler(int, char *);
 
 int main(int argc, char *argv[]) {
@@ -101,19 +108,47 @@ int read_line(int fd, char *buff) {
     return n;
 }
 
-int parse_cmd(char *buff, char *cmds[]) {
+int parse_cmd(char *buff, struct cmd cmds[]) {
     char *pch = NULL;
-    int i = 0;
+    char *tmp_cmd[SINGLE_CMD_WORD]; /* single command */
+    int c = 0;  /* command number */
+    int i = 0;  /* word number in whole command line */
+    int w = 0;  /* word number in single command */
     pch = strtok(buff, " \n\r\t");
     for(i = 0; pch != NULL; i++) {
-        cmds[i] = pch;
+        tmp_cmd[i] = pch;
+        if(strcmp(pch, "|") == 0) {
+            cmds[c].argv = (char **)malloc((i + 1) * sizeof(char *));
+            for(w = 0; w < i + 1; w++) {
+                cmds[c].argv[w] = tmp_cmd[w];
+                printf("%s\n", cmds[c].argv[w]);
+            }
+            cmds[c].argc = w;
+            printf("%d\n", cmds[c].argc);
+            c++;
+            i = -1;
+        }
         pch = strtok(NULL, " \n\r\t");
     }
-    return i;
+    cmds[c].argv = (char **)malloc((i + 1) * sizeof(char *));
+    for(w = 0; w < i; w++) {
+        cmds[c].argv[w] = tmp_cmd[w];
+        printf("%s\n", cmds[c].argv[w]);
+    }
+    cmds[c].argc = w;
+    printf("%d\n", cmds[c].argc);
+    return c + 1;
+}
+
+void clear_cmd(struct cmd cmds[], int cmd_count) {
+    int i = 0;
+    for(i = 0; i < cmd_count; i++)
+        free(cmds[i].argv);
+    return;
 }
 
 void conn_handler(int fd, char *buff) {
-    char *cmds[CMDLINE_LENGTH];
+    struct cmd cmds[CMDLINE_LENGTH];
     int cmd_count = 0;
     send_msg(fd, buff, WELCOME);
     while(1) {
@@ -122,6 +157,7 @@ void conn_handler(int fd, char *buff) {
             break;
         cmd_count = parse_cmd(buff, cmds);
         send_msg(fd, buff, buff);
+        clear_cmd(cmds, cmd_count);
     }
     return;
 }
