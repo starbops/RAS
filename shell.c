@@ -119,24 +119,20 @@ int parse_cmd(char *buff, struct cmd cmds[]) {
         tmp_cmd[i] = pch;
         if(strcmp(pch, "|") == 0) {
             cmds[c].argv = (char **)malloc((i + 1) * sizeof(char *));
-            for(w = 0; w < i + 1; w++) {
+            for(w = 0; w < i + 1; w++)
                 cmds[c].argv[w] = tmp_cmd[w];
-                printf("%s\n", cmds[c].argv[w]);
-            }
-            cmds[c].argc = w;
-            printf("%d\n", cmds[c].argc);
+            cmds[c].argc = w - 1;
+            cmds[c].is_piped = 1;
             c++;
             i = -1;
         }
         pch = strtok(NULL, " \n\r\t");
     }
     cmds[c].argv = (char **)malloc((i + 1) * sizeof(char *));
-    for(w = 0; w < i; w++) {
+    for(w = 0; w < i; w++)
         cmds[c].argv[w] = tmp_cmd[w];
-        printf("%s\n", cmds[c].argv[w]);
-    }
     cmds[c].argc = w;
-    printf("%d\n", cmds[c].argc);
+    cmds[c].is_piped = 0;
     return c + 1;
 }
 
@@ -150,12 +146,19 @@ void clear_cmd(struct cmd cmds[], int cmd_count) {
 void conn_handler(int fd, char *buff) {
     struct cmd cmds[CMDLINE_LENGTH];
     int cmd_count = 0;
+    /*int i = 0, j = 0;*/
     send_msg(fd, buff, WELCOME);
     while(1) {
         send_msg(fd, buff, PROMPT);
         if(read_line(fd, buff) == 0)
             break;
         cmd_count = parse_cmd(buff, cmds);
+        /*for(i = 0; i < cmd_count; i++) {
+            printf("argc: %d\nis_piped: %d\nargv: ", cmds[i].argc, cmds[i].is_piped);
+            for(j = 0; j < cmds[i].argc; j++)
+                printf("%s ", cmds[i].argv[j]);
+            printf("\n\n");
+        }*/
         send_msg(fd, buff, buff);
         clear_cmd(cmds, cmd_count);
     }
