@@ -109,11 +109,11 @@ int read_line(int fd, char *buff) {
 }
 
 int parse_line(char *buff, struct cmd cmds[]) {
-    char *pch = NULL;
+    char *pch = NULL;               /* single word */
     char *tmp_cmd[SINGLE_CMD_WORD]; /* single command */
-    int c = 0;  /* command number */
-    int i = 0;  /* word number in whole command line */
-    int w = 0;  /* word number in single command */
+    int c = 0;                      /* command number */
+    int i = 0;                      /* word number in whole command line */
+    int w = 0;                      /* word number in single command */
     pch = strtok(buff, " \n\r\t");
     for(i = 0; pch != NULL; i++) {
         tmp_cmd[i] = pch;
@@ -121,7 +121,7 @@ int parse_line(char *buff, struct cmd cmds[]) {
             cmds[c].argv = (char **)malloc((i + 1) * sizeof(char *));
             for(w = 0; w < i + 1; w++)
                 cmds[c].argv[w] = tmp_cmd[w];
-            cmds[c].argc = w - 1;
+            cmds[c].argc = w - 1;   /* excluding pipe character */
             cmds[c].is_piped = 1;
             c++;
             i = -1;
@@ -159,14 +159,17 @@ int execute_line(struct cmd cmds[]) {
 void connection_handler(int fd) {
     struct cmd cmds[CMDLINE_LENGTH];
     char buff[BUFF_SIZE];
+    int line_length;
     int cmd_count = 0;
     int result = 0;
     /*int i = 0, j = 0;*/
     send_msg(fd, buff, WELCOME);
     while(1) {
         send_msg(fd, buff, PROMPT);
-        if(read_line(fd, buff) == 0)
+        if((line_length = read_line(fd, buff)) == 0)    /* client close connection */
             break;
+        else if(line_length == 1)                       /* enter key */
+            continue;
         cmd_count = parse_line(buff, cmds);
         /*for(i = 0; i < cmd_count; i++) {
             printf("argc: %d\nis_piped: %d\nargv: ", cmds[i].argc, cmds[i].is_piped);
