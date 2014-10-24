@@ -19,12 +19,12 @@ struct cmd {
 
 int send_msg(int, char *, char *);
 int read_line(int, char *);
-int parse_cmd(char *, struct cmd []);
-void clear_cmd(struct cmd [], int);
-void conn_handler(int, char *);
+int parse_line(char *, struct cmd []);
+void clear_line(struct cmd [], int);
+int execute_line(struct cmd []);
+void connection_handler(int);
 
 int main(int argc, char *argv[]) {
-    char buff[BUFF_SIZE];
     int listenfd = 0;
     int optval = 1;
     int connfd = 0;
@@ -68,7 +68,7 @@ int main(int argc, char *argv[]) {
                 perror("server: fork error");
             } else if(conn_pid == 0) {          /* actual child process */
                 close(listenfd);
-                conn_handler(connfd, buff);
+                connection_handler(connfd);
                 exit(0);
             } else {
                 exit(0);
@@ -108,7 +108,7 @@ int read_line(int fd, char *buff) {
     return n;
 }
 
-int parse_cmd(char *buff, struct cmd cmds[]) {
+int parse_line(char *buff, struct cmd cmds[]) {
     char *pch = NULL;
     char *tmp_cmd[SINGLE_CMD_WORD]; /* single command */
     int c = 0;  /* command number */
@@ -136,31 +136,50 @@ int parse_cmd(char *buff, struct cmd cmds[]) {
     return c + 1;
 }
 
-void clear_cmd(struct cmd cmds[], int cmd_count) {
+void clear_line(struct cmd cmds[], int cmd_count) {
     int i = 0;
     for(i = 0; i < cmd_count; i++)
         free(cmds[i].argv);
     return;
 }
 
-void conn_handler(int fd, char *buff) {
+int execute_line(struct cmd cmds[]) {
+    int result = 0;
+    if(strcmp(cmds[0].argv[0], "exit") == 0)
+        result = 1;
+    else if(strcmp(cmds[0].argv[0], "") == 0) {
+        ;
+    }
+    else {
+        ;
+    }
+    return result;
+}
+
+void connection_handler(int fd) {
     struct cmd cmds[CMDLINE_LENGTH];
+    char buff[BUFF_SIZE];
     int cmd_count = 0;
+    int result = 0;
     /*int i = 0, j = 0;*/
     send_msg(fd, buff, WELCOME);
     while(1) {
         send_msg(fd, buff, PROMPT);
         if(read_line(fd, buff) == 0)
             break;
-        cmd_count = parse_cmd(buff, cmds);
+        cmd_count = parse_line(buff, cmds);
         /*for(i = 0; i < cmd_count; i++) {
             printf("argc: %d\nis_piped: %d\nargv: ", cmds[i].argc, cmds[i].is_piped);
             for(j = 0; j < cmds[i].argc; j++)
                 printf("%s ", cmds[i].argv[j]);
             printf("\n\n");
         }*/
+        if((result = execute_line(cmds)) == 1) {
+            clear_line(cmds, cmd_count);
+            break;
+        }
         send_msg(fd, buff, buff);
-        clear_cmd(cmds, cmd_count);
+        clear_line(cmds, cmd_count);
     }
     return;
 }
