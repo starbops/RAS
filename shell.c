@@ -6,8 +6,6 @@
 
 #define SERV_PORT 5140
 #define BUFF_SIZE 10240
-#define PATH_LENGTH 256
-#define INIT_PATH "bin"
 #define CMDLINE_LENGTH 10240
 #define SINGLE_CMD_WORD 256
 #define WELCOME "****************************************\n** Welcome to the information server. **\n****************************************\n"
@@ -23,7 +21,7 @@ int send_msg(int, char *);
 int read_line(int, char *);
 int parse_line(char *, struct cmd []);
 void clear_line(struct cmd [], int);
-int execute_line(int, struct cmd [], char []);
+int execute_line(int, struct cmd [], int);
 void connection_handler(int);
 
 int main(int argc, char *argv[]) {
@@ -137,25 +135,32 @@ int parse_line(char *buff, struct cmd cmds[]) {
     return c + 1;
 }
 
-void clear_line(struct cmd cmds[], int cmd_count) {
+void clear_line(struct cmd cmds[], int n) {
     int i = 0;
-    for(i = 0; i < cmd_count; i++)
+    for(i = 0; i < n; i++)
         free(cmds[i].argv);
     return;
 }
 
-int execute_line(int fd, struct cmd cmds[], char path[]) {
+int execute_line(int fd, struct cmd cmds[], int cn) {
+    char *envar = NULL;
+    int i = 0;
+    int pipe_count = 0;
     int status = 0;
+    int **pipefds = NULL;
     if(strcmp(cmds[0].argv[0], "exit") == 0)
         status = 1;
     else if(strcmp(cmds[0].argv[0], "printenv") == 0) {
-        send_msg(fd, path);
+        if((envar = getenv(cmds[0].argv[1])) != NULL)
+            send_msg(fd, envar);
     }
     else if(strcmp(cmds[0].argv[0], "setenv") == 0) {
-        strncpy(path, cmds[0].argv[2], strlen(cmds[0].argv[2]));
+        setenv(cmds[0].argv[1], cmds[0].argv[2], 1);
     }
     else {
-        ;
+        for(i = 0; i < cn; i++)
+            if(cmds[i].is_piped == 1)
+                pipe_count++;
     }
     return status;
 }
@@ -163,12 +168,10 @@ int execute_line(int fd, struct cmd cmds[], char path[]) {
 void connection_handler(int fd) {
     struct cmd cmds[CMDLINE_LENGTH];
     char buff[BUFF_SIZE];
-    char path[PATH_LENGTH];
-    int line_len;
-    int cmd_count = 0;
+    int line_len = 0;
+    int cn = 0;
     int status = 0;
-    /*int i = 0, j = 0;*/
-    strncpy(path, INIT_PATH, strlen(INIT_PATH));
+    setenv("PATH", "bin:.", 1);
     send_msg(fd, WELCOME);
     while(1) {
         send_msg(fd, PROMPT);
@@ -176,18 +179,12 @@ void connection_handler(int fd) {
             break;
         else if(line_len == 1)                       /* enter key */
             continue;
-        cmd_count = parse_line(buff, cmds);
-        /*for(i = 0; i < cmd_count; i++) {
-            printf("argc: %d\nis_piped: %d\nargv: ", cmds[i].argc, cmds[i].is_piped);
-            for(j = 0; j < cmds[i].argc; j++)
-                printf("%s ", cmds[i].argv[j]);
-            printf("\n\n");
-        }*/
-        if((status = execute_line(fd, cmds, path)) == 1) {
-            clear_line(cmds, cmd_count);
+        cn = parse_line(buff, cmds);
+        if((status = execute_line(fd, cmds, cn)) == 1) {
+            clear_line(cmds, cn);
             break;
         }
-        clear_line(cmds, cmd_count);
+        clear_line(cmds, cn);
     }
     return;
 }
