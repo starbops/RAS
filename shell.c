@@ -6,6 +6,8 @@
 
 #define SERV_PORT 5140
 #define BUFF_SIZE 10240
+#define PATH_LENGTH 256
+#define INIT_PATH "bin"
 #define CMDLINE_LENGTH 10240
 #define SINGLE_CMD_WORD 256
 #define WELCOME "****************************************\n** Welcome to the information server. **\n****************************************\n"
@@ -17,11 +19,11 @@ struct cmd {
     int is_piped;
 };
 
-int send_msg(int, char *, char *);
+int send_msg(int, char *);
 int read_line(int, char *);
 int parse_line(char *, struct cmd []);
 void clear_line(struct cmd [], int);
-int execute_line(struct cmd []);
+int execute_line(int, struct cmd [], char []);
 void connection_handler(int);
 
 int main(int argc, char *argv[]) {
@@ -82,17 +84,16 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-int send_msg(int fd, char *buff, char *msg) {
+int send_msg(int fd, char *msg) {
+    char *sbuff = NULL;
+    int msg_len = strlen(msg);
     int n = 0;
-    if(buff == msg) {
-        if((n = write(fd, buff, strlen(msg))) < 0)
-            perror("server: write error");
-    } else {
-        memset(buff, 0, BUFF_SIZE);
-        strncpy(buff, msg, strlen(msg));
-        if((n = write(fd, buff, strlen(msg))) < 0)
-            perror("server: write error");
-    }
+    sbuff = (char *)malloc((msg_len + 1) * sizeof(char));
+    strncpy(sbuff, msg, strlen(msg) + 1);
+    sbuff[msg_len] = '\0';
+    if((n = write(fd, sbuff, strlen(msg))) < 0)
+        perror("server: write error");
+    free(sbuff);
     return n;
 }
 
@@ -143,32 +144,37 @@ void clear_line(struct cmd cmds[], int cmd_count) {
     return;
 }
 
-int execute_line(struct cmd cmds[]) {
-    int result = 0;
+int execute_line(int fd, struct cmd cmds[], char path[]) {
+    int status = 0;
     if(strcmp(cmds[0].argv[0], "exit") == 0)
-        result = 1;
-    else if(strcmp(cmds[0].argv[0], "") == 0) {
-        ;
+        status = 1;
+    else if(strcmp(cmds[0].argv[0], "printenv") == 0) {
+        send_msg(fd, path);
+    }
+    else if(strcmp(cmds[0].argv[0], "setenv") == 0) {
+        strncpy(path, cmds[0].argv[2], strlen(cmds[0].argv[2]));
     }
     else {
         ;
     }
-    return result;
+    return status;
 }
 
 void connection_handler(int fd) {
     struct cmd cmds[CMDLINE_LENGTH];
     char buff[BUFF_SIZE];
-    int line_length;
+    char path[PATH_LENGTH];
+    int line_len;
     int cmd_count = 0;
-    int result = 0;
+    int status = 0;
     /*int i = 0, j = 0;*/
-    send_msg(fd, buff, WELCOME);
+    strncpy(path, INIT_PATH, strlen(INIT_PATH));
+    send_msg(fd, WELCOME);
     while(1) {
-        send_msg(fd, buff, PROMPT);
-        if((line_length = read_line(fd, buff)) == 0)    /* client close connection */
+        send_msg(fd, PROMPT);
+        if((line_len = read_line(fd, buff)) == 0)    /* client close connection */
             break;
-        else if(line_length == 1)                       /* enter key */
+        else if(line_len == 1)                       /* enter key */
             continue;
         cmd_count = parse_line(buff, cmds);
         /*for(i = 0; i < cmd_count; i++) {
@@ -177,11 +183,10 @@ void connection_handler(int fd) {
                 printf("%s ", cmds[i].argv[j]);
             printf("\n\n");
         }*/
-        if((result = execute_line(cmds)) == 1) {
+        if((status = execute_line(fd, cmds, path)) == 1) {
             clear_line(cmds, cmd_count);
             break;
         }
-        send_msg(fd, buff, buff);
         clear_line(cmds, cmd_count);
     }
     return;
