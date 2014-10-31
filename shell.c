@@ -119,9 +119,10 @@ int parse_line(char *buff, struct cmd cmds[]) {
         tmp_cmd[i] = pch;
         if(strcmp(pch, "|") == 0) {
             cmds[c].argv = (char **)malloc((i + 1) * sizeof(char *));
-            for(w = 0; w < i + 1; w++)
+            for(w = 0; w < i; w++)
                 cmds[c].argv[w] = tmp_cmd[w];
-            cmds[c].argc = w - 1;   /* excluding pipe character */
+            cmds[c].argv[w] = NULL; /* pipe character is not included */
+            cmds[c].argc = w;
             cmds[c].is_piped = 1;
             c++;
             i = -1;
@@ -131,8 +132,10 @@ int parse_line(char *buff, struct cmd cmds[]) {
     cmds[c].argv = (char **)malloc((i + 1) * sizeof(char *));
     for(w = 0; w < i; w++)
         cmds[c].argv[w] = tmp_cmd[w];
+    cmds[c].argv[w] = NULL;
     cmds[c].argc = w;
     cmds[c].is_piped = 0;
+
     return c + 1;
 }
 
