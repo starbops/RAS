@@ -17,6 +17,7 @@ struct cmd {
     int is_piped;
 };
 
+void reaper(int);
 int send_msg(int, char *);
 int read_line(int, char *);
 int parse_line(char *, struct cmd []);
@@ -29,9 +30,7 @@ int main(int argc, char *argv[]) {
     int optval = 1;
     int connfd = 0;
     int clilen = 0;
-    int fake_pid = 0;
     int conn_pid = 0;
-    int status = 0;
     struct sockaddr_in serv_addr;
     struct sockaddr_in conn_addr;
 
@@ -56,30 +55,32 @@ int main(int argc, char *argv[]) {
         exit(-1);
     }
 
+    signal(SIGCHLD, &reaper);
+
     while(1) {
         clilen = sizeof(conn_addr);
         if((connfd = accept(listenfd, (struct sockaddr *)&conn_addr, (socklen_t *)&clilen)) < 0) {
             perror("server: accept error");
         }
-        if((fake_pid = fork()) < 0) {           /* fork error */
+        if((conn_pid = fork()) < 0) {
             perror("server: fork error");
-        } else if(fake_pid == 0) {              /* fake child process */
-            if((conn_pid = fork()) < 0) {
-                perror("server: fork error");
-            } else if(conn_pid == 0) {          /* actual child process */
-                close(listenfd);
-                connection_handler(connfd);
-                exit(0);
-            } else {
-                exit(0);
-            }
-        } else {                                /* parent process */
+        } else if(conn_pid == 0) {          /* child process */
+            close(listenfd);
+            connection_handler(connfd);
+            exit(0);
+        } else {                            /* parent process */
             close(connfd);
-            waitpid(fake_pid, &status, 0);
         }
     }
 
     return 0;
+}
+
+void reaper(int sig) {
+    int status;
+    while(wait3(&status, WNOHANG, (struct rusage *)0) >= 0) {
+    }
+    return;
 }
 
 int send_msg(int fd, char *msg) {
