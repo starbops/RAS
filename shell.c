@@ -22,8 +22,8 @@ int send_msg(int, char *);
 int read_line(int, char *);
 int parse_line(char *, struct cmd []);
 void clear_line(struct cmd [], int);
-int execute_line(int, struct cmd [], int);
-void connection_handler(int);
+int execute_line(struct cmd [], int);
+void connection_handler();
 
 int main(int argc, char *argv[]) {
     int listenfd = 0;
@@ -66,7 +66,10 @@ int main(int argc, char *argv[]) {
             perror("server: fork error");
         } else if(conn_pid == 0) {          /* child process */
             close(listenfd);
-            connection_handler(connfd);
+            dup2(connfd, 0);
+            dup2(connfd, 1);
+            dup2(connfd, 2);
+            connection_handler();
             exit(0);
         } else {                            /* parent process */
             close(connfd);
@@ -146,17 +149,19 @@ void clear_line(struct cmd cmds[], int n) {
     return;
 }
 
-int execute_line(int fd, struct cmd cmds[], int cn) {
+int execute_line(struct cmd cmds[], int cn) {
     char *envar = NULL;
     int i = 0;
     int pipe_count = 0;
     int status = 0;
     int **pipefds = NULL;
+    int test_pid = 0;
+    int pid_status = 0;
     if(strcmp(cmds[0].argv[0], "exit") == 0)
         status = 1;
     else if(strcmp(cmds[0].argv[0], "printenv") == 0) {
         if((envar = getenv(cmds[0].argv[1])) != NULL)
-            send_msg(fd, envar);
+            send_msg(1, envar);
     }
     else if(strcmp(cmds[0].argv[0], "setenv") == 0) {
         setenv(cmds[0].argv[1], cmds[0].argv[2], 1);
@@ -165,26 +170,36 @@ int execute_line(int fd, struct cmd cmds[], int cn) {
         for(i = 0; i < cn; i++)
             if(cmds[i].is_piped == 1)
                 pipe_count++;
+        if((test_pid = fork()) < 0) {
+            perror("server: fork error");
+        } else if(test_pid == 0) {
+            execvp(cmds[0].argv[0], cmds[0].argv);
+            /*printf("Unknown command: [%s].\n", cmds[0].argv[0]);*/
+            send_msg(1, "Unknown command:\n");
+            exit(0);
+        } else {
+            wait(&pid_status);
+        }
     }
     return status;
 }
 
-void connection_handler(int fd) {
+void connection_handler() {
     struct cmd cmds[CMDLINE_LENGTH];
     char buff[BUFF_SIZE];
     int line_len = 0;
     int cn = 0;
     int status = 0;
     setenv("PATH", "bin:.", 1);
-    send_msg(fd, WELCOME);
+    send_msg(1, WELCOME);
     while(1) {
-        send_msg(fd, PROMPT);
-        if((line_len = read_line(fd, buff)) == 0)    /* client close connection */
+        send_msg(1, PROMPT);
+        if((line_len = read_line(0, buff)) == 0)    /* client close connection */
             break;
         else if(line_len == 1)                       /* enter key */
             continue;
         cn = parse_line(buff, cmds);
-        if((status = execute_line(fd, cmds, cn)) == 1) {
+        if((status = execute_line(cmds, cn)) == 1) {
             clear_line(cmds, cn);
             break;
         }
