@@ -66,9 +66,9 @@ int main(int argc, char *argv[]) {
             perror("server: fork error");
         } else if(conn_pid == 0) {          /* child process */
             close(listenfd);
-            dup2(connfd, 0);
-            dup2(connfd, 1);
-            dup2(connfd, 2);
+            dup2(connfd, fileno(stdin));
+            dup2(connfd, fileno(stdout));
+            dup2(connfd, fileno(stderr));
             connection_handler();
             exit(0);
         } else {                            /* parent process */
@@ -161,7 +161,7 @@ int execute_line(struct cmd cmds[], int cn) {
         status = 1;
     else if(strcmp(cmds[0].argv[0], "printenv") == 0) {
         if((envar = getenv(cmds[0].argv[1])) != NULL)
-            send_msg(1, envar);
+            send_msg(fileno(stdout), envar);
     }
     else if(strcmp(cmds[0].argv[0], "setenv") == 0) {
         setenv(cmds[0].argv[1], cmds[0].argv[2], 1);
@@ -175,7 +175,7 @@ int execute_line(struct cmd cmds[], int cn) {
         } else if(test_pid == 0) {
             execvp(cmds[0].argv[0], cmds[0].argv);
             /*printf("Unknown command: [%s].\n", cmds[0].argv[0]);*/
-            send_msg(1, "Unknown command:\n");
+            send_msg(fileno(stdout), "Unknown command:\n");
             exit(0);
         } else {
             wait(&pid_status);
@@ -191,10 +191,10 @@ void connection_handler() {
     int cn = 0;
     int status = 0;
     setenv("PATH", "bin:.", 1);
-    send_msg(1, WELCOME);
+    send_msg(fileno(stdout), WELCOME);
     while(1) {
-        send_msg(1, PROMPT);
-        if((line_len = read_line(0, buff)) == 0)    /* client close connection */
+        send_msg(fileno(stdout), PROMPT);
+        if((line_len = read_line(fileno(stdin), buff)) == 0)    /* client close connection */
             break;
         else if(line_len == 1)                       /* enter key */
             continue;
