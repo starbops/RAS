@@ -153,43 +153,42 @@ void clear_line(struct cmd cmds[], int n) {
 void do_magic(struct cmd cmds[], int cn) {
     int cpid = 0;
     int i = 0;
-    int new_pipefd[2];
-    int old_pipefd[2];
+    int new_pipefds[2];
+    int old_pipefds[2];
     int status = 0;
     for(i = 0; i < cn; i++) {
         if(i != cn - 1)
-            pipe(new_pipefd);
+            pipe(new_pipefds);
         if((cpid = fork()) < 0) {
             perror("server: fork error");
         } else if(cpid == 0) {                  /* child process */
-            if(i != 0) {
-                close(old_pipefd[1]);
-                dup2(old_pipefd[0], fileno(stdin));
-                close(old_pipefd[0]);
+            if(i != 0) {                            /* no head */
+                close(old_pipefds[1]);
+                dup2(old_pipefds[0], fileno(stdin));
+                close(old_pipefds[0]);
             }
-            if(i != cn -1) {
-                close(new_pipefd[0]);
-                dup2(new_pipefd[1], fileno(stdout));
-                close(new_pipefd[1]);
+            if(i != cn -1) {                        /* no tail */
+                close(new_pipefds[0]);
+                dup2(new_pipefds[1], fileno(stdout));
+                close(new_pipefds[1]);
             }
             execvp(cmds[i].argv[0], cmds[i].argv);
-            send_msg(fileno(stdout), "Unknown command:\n");
-            exit(0);
+            exit(1);
         } else {                                /* parent process */
-            if(i != 0) {
-                close(old_pipefd[0]);
-                close(old_pipefd[1]);
+            if(i != 0) {                            /* no head */
+                close(old_pipefds[0]);
+                close(old_pipefds[1]);
             }
-            if(i != cn -1) {
-                old_pipefd[0] = new_pipefd[0];
-                old_pipefd[1] = new_pipefd[1];
+            if(i != cn -1) {                        /* no tail */
+                old_pipefds[0] = new_pipefds[0];
+                old_pipefds[1] = new_pipefds[1];
             }
             waitpid(cpid, &status, 0);
         }
     }
     if(cn > 1) {
-        close(old_pipefd[0]);
-        close(old_pipefd[1]);
+        close(old_pipefds[0]);
+        close(old_pipefds[1]);
     }
     return;
 }
