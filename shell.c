@@ -22,6 +22,7 @@ int send_msg(int, char *);
 int read_line(int, char *);
 int parse_line(char *, struct cmd []);
 void clear_line(struct cmd [], int);
+void do_magic(struct cmd [], int, int []);
 int execute_line(struct cmd [], int);
 void connection_handler();
 
@@ -149,6 +150,60 @@ void clear_line(struct cmd cmds[], int n) {
     return;
 }
 
+void do_magic(struct cmd cmds[], int cn, int old_pipefd[]) {
+    char buffer[1000];
+    int cpid = 0;
+    int new_pipefd[2];
+    int status = 0;
+    sprintf(buffer, "cn: %d\n", cn);
+    send_msg(fileno(stdout), buffer);
+    if(cn == 1) {
+        if(old_pipefd != NULL) {
+            close(old_pipefd[1]);
+            dup2(old_pipefd[0], fileno(stdin));
+            close(old_pipefd[0]);
+        }
+        send_msg(fileno(stdout), "last cmd\n");
+        execvp(cmds[0].argv[0], cmds[0].argv);
+        send_msg(fileno(stdout), "Unknown command:\n");
+        exit(1);
+    } else {
+        pipe(new_pipefd);
+            send_msg(fileno(stdout), "not last cmd\n");
+        if((cpid = fork()) < 0)
+            /*perror("server: fork error");*/
+            send_msg(fileno(stdout), "server: fork error\n");
+        else if(cpid == 0) {                /* child process */
+            if(old_pipefd != NULL) {
+                close(old_pipefd[1]);
+                dup2(old_pipefd[0], fileno(stdin));
+                close(old_pipefd[0]);
+            send_msg(fileno(stdout), "non-first cmd:\n");
+            }
+            close(new_pipefd[0]);
+            dup2(new_pipefd[1], fileno(stdout));
+            close(new_pipefd[1]);
+            execvp(cmds[0].argv[0], cmds[0].argv);
+            send_msg(fileno(stdout), "Unknown command:\n");
+            exit(1);
+        } else {                            /* parent process */
+            /*close(new_pipefd[0]);
+            close(new_pipefd[1]);*/
+            /*waitpid(cpid, &status, 0);*/
+            if(old_pipefd != NULL) {
+                close(old_pipefd[0]);
+                close(old_pipefd[1]);
+            }
+            send_msg(fileno(stdout), "papa before magic\n");
+            do_magic(cmds + 1, --cn, new_pipefd);
+            /*close(new_pipefd[0]);
+            close(new_pipefd[1]);
+            send_msg(fileno(stdout), "papa after magic\n");*/
+        }
+    }
+    return;
+}
+
 int execute_line(struct cmd cmds[], int cn) {
     char *envar = NULL;
     int i = 0;
@@ -173,12 +228,13 @@ int execute_line(struct cmd cmds[], int cn) {
         if((test_pid = fork()) < 0) {
             perror("server: fork error");
         } else if(test_pid == 0) {
-            execvp(cmds[0].argv[0], cmds[0].argv);
+            /*execvp(cmds[0].argv[0], cmds[0].argv);*/
             /*printf("Unknown command: [%s].\n", cmds[0].argv[0]);*/
+            do_magic(cmds, cn, NULL);
             send_msg(fileno(stdout), "Unknown command:\n");
             exit(0);
         } else {
-            wait(&pid_status);
+            waitpid(test_pid, &pid_status, 0);
         }
     }
     return status;
