@@ -22,6 +22,7 @@ int send_msg(int, char *);
 int read_line(int, char *);
 int parse_line(char *, struct cmd []);
 void clear_line(struct cmd [], int);
+void do_magic(struct cmd [], int);
 int execute_line(struct cmd [], int);
 void connection_handler();
 
@@ -149,14 +150,53 @@ void clear_line(struct cmd cmds[], int n) {
     return;
 }
 
+void do_magic(struct cmd cmds[], int cn) {
+    int cpid = 0;
+    int i = 0;
+    int new_pipefd[2];
+    int old_pipefd[2];
+    int status = 0;
+    for(i = 0; i < cn; i++) {
+        if(i != cn - 1)
+            pipe(new_pipefd);
+        if((cpid = fork()) < 0) {
+            perror("server: fork error");
+        } else if(cpid == 0) {                  /* child process */
+            if(i != 0) {
+                close(old_pipefd[1]);
+                dup2(old_pipefd[0], fileno(stdin));
+                close(old_pipefd[0]);
+            }
+            if(i != cn -1) {
+                close(new_pipefd[0]);
+                dup2(new_pipefd[1], fileno(stdout));
+                close(new_pipefd[1]);
+            }
+            execvp(cmds[i].argv[0], cmds[i].argv);
+            send_msg(fileno(stdout), "Unknown command:\n");
+            exit(0);
+        } else {                                /* parent process */
+            if(i != 0) {
+                close(old_pipefd[0]);
+                close(old_pipefd[1]);
+            }
+            if(i != cn -1) {
+                old_pipefd[0] = new_pipefd[0];
+                old_pipefd[1] = new_pipefd[1];
+            }
+            waitpid(cpid, &status, 0);
+        }
+    }
+    if(cn > 1) {
+        close(old_pipefd[0]);
+        close(old_pipefd[1]);
+    }
+    return;
+}
+
 int execute_line(struct cmd cmds[], int cn) {
     char *envar = NULL;
-    int i = 0;
-    int pipe_count = 0;
     int status = 0;
-    int **pipefds = NULL;
-    int test_pid = 0;
-    int pid_status = 0;
     if(strcmp(cmds[0].argv[0], "exit") == 0)
         status = 1;
     else if(strcmp(cmds[0].argv[0], "printenv") == 0) {
@@ -166,21 +206,9 @@ int execute_line(struct cmd cmds[], int cn) {
     else if(strcmp(cmds[0].argv[0], "setenv") == 0) {
         setenv(cmds[0].argv[1], cmds[0].argv[2], 1);
     }
-    else {
-        for(i = 0; i < cn; i++)
-            if(cmds[i].is_piped == 1)
-                pipe_count++;
-        if((test_pid = fork()) < 0) {
-            perror("server: fork error");
-        } else if(test_pid == 0) {
-            execvp(cmds[0].argv[0], cmds[0].argv);
-            /*printf("Unknown command: [%s].\n", cmds[0].argv[0]);*/
-            send_msg(fileno(stdout), "Unknown command:\n");
-            exit(0);
-        } else {
-            wait(&pid_status);
-        }
-    }
+    else
+        do_magic(cmds, cn);
+
     return status;
 }
 
