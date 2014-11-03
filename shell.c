@@ -167,14 +167,15 @@ void clear_line(struct cmd cmds[], int n) {
 
 void do_magic(struct cmd cmds[], int cn) {
     int cpid = 0;
+    int filefd = 0;
     int i = 0;
     int new_pipefds[2];
     int old_pipefds[2];
     int status = 0;
     for(i = 0; i < cn; i++) {
-        if(i != cn - 1)
+        if(i != cn - 1)                 /* no new pipe for last command */
             pipe(new_pipefds);
-        if((cpid = fork()) < 0) {
+        if((cpid = fork()) < 0) {       /* fork for every commands */
             perror("server: fork error");
         } else if(cpid == 0) {                  /* child process */
             if(i != 0) {                            /* no head */
@@ -182,7 +183,11 @@ void do_magic(struct cmd cmds[], int cn) {
                 dup2(old_pipefds[0], fileno(stdin));
                 close(old_pipefds[0]);
             }
-            if(i != cn - 1) {                        /* no tail */
+            if(i == cn - 2 && cmds[i].is_piped == 0) {
+                filefd = open(cmds[i + 1].argv[0], O_CREAT | O_RDWR);
+                dup2(filefd, fileno(stdout));
+                close(filefd);
+            } else if(i != cn - 1) {                        /* no tail */
                 close(new_pipefds[0]);
                 dup2(new_pipefds[1], fileno(stdout));
                 close(new_pipefds[1]);
@@ -194,7 +199,9 @@ void do_magic(struct cmd cmds[], int cn) {
                 close(old_pipefds[0]);
                 close(old_pipefds[1]);
             }
-            if(i != cn -1) {                        /* no tail */
+            if(i == cn - 2 && cmds[i].is_piped == 0) {
+                cn--;
+            } else if(i != cn -1) {                        /* no tail */
                 old_pipefds[0] = new_pipefds[0];
                 old_pipefds[1] = new_pipefds[1];
             }
