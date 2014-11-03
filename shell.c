@@ -118,8 +118,8 @@ int read_line(int fd, char *buff) {
     memset(buff, 0, BUFF_SIZE);
     if((n = read(fd, buff, BUFF_SIZE)) < 0)
         perror("server: read error");
-    else if(n == 0)
-        n = 0;
+    else if(n == 2 && *buff == '\r' && *(buff+1) == '\n')
+        n = 1;
     else
         buff[n-1] = '\0';
     return n;
@@ -244,8 +244,8 @@ void do_magic2(struct cmd cmds[], int cn, struct pp pps[], int pn) {
                 /*close(pps[pipefrom].fds[1]);*/
             }
             if(i == cn - 2 && cmds[i].write_file == 1) {
-                printf("%d: pipeto %d\n", i, cmds[i].is_piped);
-                fflush(stdout);
+                /*printf("%d: pipeto %d\n", i, cmds[i].is_piped);
+                fflush(stdout);*/
                 dup2(filefd, fileno(stdout));
                 close(filefd);
             } else if(i != cn - 1 && cmds[i].pipeto != -1) {                   /* no tail */
