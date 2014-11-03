@@ -263,7 +263,8 @@ void do_magic2(struct cmd cmds[], int cn, struct pp pps[], int pn) {
                 }
             }
             execvp(cmds[i].argv[0], cmds[i].argv);
-            perror("server: exec error");
+            fprintf(stderr, "Unknown Command: [%s].\n", cmds[i].argv[0]);
+            fflush(stderr);
             exit(1);
         } else {                            /* parent process */
             if(i != 0 && cmds[i].pipefrom != -1) {                        /* no head */
@@ -328,6 +329,8 @@ void do_magic(struct cmd cmds[], int cn) {
                 close(new_pipefds[1]);
             }
             execvp(cmds[i].argv[0], cmds[i].argv);
+            fprintf(stderr, "Unknown Command: [%s].\n", cmds[i].argv[0]);
+            fflush(stderr);
             exit(1);
         } else {                                /* parent process */
             if(i != 0) {                            /* no head */
@@ -377,7 +380,6 @@ void connection_handler() {
     int line_len = 0;
     int cn = 0;
     int pn = 0;
-    int i = 0;
     int status = 0;
     setenv("PATH", "bin:.", 1);
     printf(WELCOME);
