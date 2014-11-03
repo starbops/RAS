@@ -184,7 +184,7 @@ void do_magic(struct cmd cmds[], int cn) {
                 close(old_pipefds[0]);
             }
             if(i == cn - 2 && cmds[i].is_piped == 0) {
-                filefd = open(cmds[i + 1].argv[0], O_CREAT | O_RDWR);
+                filefd = open(cmds[i + 1].argv[0], O_CREAT | O_RDWR, S_IREAD | S_IWRITE);
                 dup2(filefd, fileno(stdout));
                 close(filefd);
             } else if(i != cn - 1) {                        /* no tail */
