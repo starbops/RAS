@@ -20,11 +20,18 @@ struct cmd {
      *  0: file redirection *
      *  1: normal pipe      *
      * >1: numbered-pipe    */
+    int pipeto;
+    int pipefrom;
+};
+struct pp {
+    int fds[2];
+    int is_set;
 };
 void reaper(int);
 int send_msg(int, char *);
 int read_line(int, char *);
 int parse_line(char *, struct cmd []);
+int preprocess_line(struct cmd [], int, struct pp []);
 void clear_line(struct cmd [], int);
 void do_magic(struct cmd [], int);
 int execute_line(struct cmd [], int);
@@ -128,12 +135,15 @@ int parse_line(char *buff, struct cmd cmds[]) {
         tmp_cmd[i] = pch;
         if(strcmp(pch, ">") == 0) {         /* file redirection */
             cmds[c].is_piped = 0;
+            cmds[c].pipeto = -1;
             checkpoint = 1;
         } else if(strcmp(pch, "|") == 0) {  /* normal pipe */
             cmds[c].is_piped = 1;
+            cmds[c].pipeto = c;
             checkpoint = 1;
         } else if(*pch - '|' == 0) {        /* numbered-pipe */
             cmds[c].is_piped = (int)strtol(pch + 1, NULL, 10);
+            cmds[c].pipeto = c;
             checkpoint = 1;
         }
         if(checkpoint == 1) {
@@ -142,6 +152,7 @@ int parse_line(char *buff, struct cmd cmds[]) {
                 cmds[c].argv[w] = tmp_cmd[w];
             cmds[c].argv[w] = NULL; /* pipe character is not included */
             cmds[c].argc = w;
+            cmds[c].pipefrom = -1;
             c++;
             i = -1;
             checkpoint = 0;
@@ -154,13 +165,57 @@ int parse_line(char *buff, struct cmd cmds[]) {
     cmds[c].argv[w] = NULL;
     cmds[c].argc = w;
     cmds[c].is_piped = -1;
+    cmds[c].pipeto = -1;
+    cmds[c].pipefrom = -1;
 
     return c + 1;
 }
 
-void clear_line(struct cmd cmds[], int n) {
+int preprocess_line(struct cmd cmds[], int cn, struct pp pps[]) {
     int i = 0;
-    for(i = 0; i < n; i++)
+    int j = 0;
+    int dst = 0;
+    int pn = 0;
+    for(i = 0; i < cn; i++) {
+        if(cmds[i].is_piped > 0) {
+            dst = i + cmds[i].is_piped;
+            cmds[dst].pipefrom = i;
+            for(j = i + 1; j < cn; j++) {
+                if(j > dst)
+                    break;
+                if(j + cmds[j].is_piped == dst) {
+                    cmds[j].is_piped = -1;
+                    cmds[j].pipeto = i;
+                }
+            }
+        }
+    }
+    for(i = 0; i < cn; i++) {
+        if (cmds[i].is_piped > 0) {
+            /*pipe(pps[i].fds);*/
+            pps[i].is_set = 1;
+            pn++;
+        }
+    }
+    /*for(i = 0; i < cn; i++) {
+        printf("%d is pipe to %d\tpipe from %d\n", i, cmds[i].pipeto, cmds[i].pipefrom);
+        fflush(stdout);
+    }
+    for(i = 0; i < cn; i++) {
+        printf("%d is set to %d\n", i, pps[i].is_set);
+        fflush(stdout);
+    }*/
+    /* reset */
+    for(i = 0; i < cn; i++)
+        if(pps[i].is_set == 1) {
+            pps[i].is_set = 0;
+        }
+    return pn;
+}
+
+void clear_line(struct cmd cmds[], int cn) {
+    int i = 0;
+    for(i = 0; i < cn; i++)
         free(cmds[i].argv);
     return;
 }
@@ -229,16 +284,19 @@ int execute_line(struct cmd cmds[], int cn) {
         setenv(cmds[0].argv[1], cmds[0].argv[2], 1);
     }
     else
-        do_magic(cmds, cn);
+        ;/*do_magic(cmds, cn);*/
 
     return status;
 }
 
 void connection_handler() {
     struct cmd cmds[CMDLINE_LENGTH];
+    struct pp pps[CMDLINE_LENGTH];
     char buff[BUFF_SIZE];
     int line_len = 0;
     int cn = 0;
+    int pn = 0;
+    /*int i = 0;*/
     int status = 0;
     setenv("PATH", "bin:.", 1);
     send_msg(fileno(stdout), WELCOME);
@@ -249,6 +307,7 @@ void connection_handler() {
         else if(line_len == 1)                       /* enter key */
             continue;
         cn = parse_line(buff, cmds);
+        pn = preprocess_line(cmds, cn, pps);
         if((status = execute_line(cmds, cn)) == 1) {
             clear_line(cmds, cn);
             break;
