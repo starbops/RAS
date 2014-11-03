@@ -20,13 +20,22 @@ struct cmd {
      *  0: file redirection *
      *  1: normal pipe      *
      * >1: numbered-pipe    */
+    int pipeto;
+    int pipefrom;
+    int write_file;
+};
+struct pp {
+    int fds[2];
+    int is_set;
 };
 void reaper(int);
 int read_line(int, char *);
 int parse_line(char *, struct cmd []);
+int preprocess_line(struct cmd [], int, struct pp []);
+void do_magic2(struct cmd [], int, struct pp [], int);
 void clear_line(struct cmd [], int);
 void do_magic(struct cmd [], int);
-int execute_line(struct cmd [], int);
+int execute_line(struct cmd [], int, struct pp [], int);
 void connection_handler();
 
 int main(int argc, char *argv[]) {
@@ -95,8 +104,8 @@ int read_line(int fd, char *buff) {
     memset(buff, 0, BUFF_SIZE);
     if((n = read(fd, buff, BUFF_SIZE)) < 0)
         perror("server: read error");
-    else if(n == 0)
-        n = 0;
+    else if(n == 2 && *buff == '\r' && *(buff+1) == '\n')
+        n = 1;
     else
         buff[n-1] = '\0';
     return n;
@@ -114,12 +123,18 @@ int parse_line(char *buff, struct cmd cmds[]) {
         tmp_cmd[i] = pch;
         if(strcmp(pch, ">") == 0) {         /* file redirection */
             cmds[c].is_piped = 0;
+            cmds[c].pipeto = -1;
+            cmds[c].write_file = 1;
             checkpoint = 1;
         } else if(strcmp(pch, "|") == 0) {  /* normal pipe */
             cmds[c].is_piped = 1;
+            cmds[c].pipeto = c;
+            cmds[c].write_file = 0;
             checkpoint = 1;
         } else if(*pch - '|' == 0) {        /* numbered-pipe */
             cmds[c].is_piped = (int)strtol(pch + 1, NULL, 10);
+            cmds[c].pipeto = c;
+            cmds[c].write_file = 0;
             checkpoint = 1;
         }
         if(checkpoint == 1) {
@@ -128,6 +143,7 @@ int parse_line(char *buff, struct cmd cmds[]) {
                 cmds[c].argv[w] = tmp_cmd[w];
             cmds[c].argv[w] = NULL; /* pipe character is not included */
             cmds[c].argc = w;
+            cmds[c].pipefrom = -1;
             c++;
             i = -1;
             checkpoint = 0;
@@ -140,13 +156,136 @@ int parse_line(char *buff, struct cmd cmds[]) {
     cmds[c].argv[w] = NULL;
     cmds[c].argc = w;
     cmds[c].is_piped = -1;
+    cmds[c].pipeto = -1;
+    cmds[c].pipefrom = -1;
+    cmds[c].write_file = 0;
 
     return c + 1;
 }
 
-void clear_line(struct cmd cmds[], int n) {
+int preprocess_line(struct cmd cmds[], int cn, struct pp pps[]) {
     int i = 0;
-    for(i = 0; i < n; i++)
+    int j = 0;
+    int dst = 0;
+    int pn = 0;
+    for(i = 0; i < cn; i++) {
+        if(cmds[i].is_piped > 0) {
+            dst = i + cmds[i].is_piped;
+            cmds[dst].pipefrom = i;
+            for(j = i + 1; j < cn; j++) {
+                if(j > dst)
+                    break;
+                if(j + cmds[j].is_piped == dst) {
+                    cmds[j].is_piped = -1;
+                    cmds[j].pipeto = i;
+                }
+            }
+        }
+    }
+    for(i = 0; i < cn; i++) {
+        if (cmds[i].is_piped > 0) {
+            pipe(pps[i].fds);
+            pps[i].is_set = 1;
+            pn++;
+        }
+    }
+    /*for(i = 0; i < cn; i++) {
+        printf("%d is pipe to %d\tpipe from %d\n", i, cmds[i].pipeto, cmds[i].pipefrom);
+        fflush(stdout);
+    }*/
+    /*for(i = 0; i < cn; i++) {
+        printf("%d: read->%d, write->%d\n", i, pps[i].fds[0], pps[i].fds[1]);
+        fflush(stdout);
+    }*/
+    /* reset */
+    /*for(i = 0; i < cn; i++)
+        if(pps[i].is_set == 1) {
+            pps[i].is_set = 0;
+        }*/
+    return pn;
+}
+
+void do_magic2(struct cmd cmds[], int cn, struct pp pps[], int pn) {
+    int cpid = 0;
+    int filefd = 0;
+    int i = 0;
+    int j = 0;
+    int pipefrom = 0;
+    int pipeto = 0;
+    int status = 0;
+    if(cn > 1 && cmds[cn - 2].write_file == 1)
+        filefd = open(cmds[cn - 1].argv[0], O_CREAT | O_RDWR, S_IREAD | S_IWRITE);
+    for(i = 0; i < cn; i++) {
+        if((cpid = fork()) < 0) {
+            perror("server: fork error");
+        } else if(cpid == 0) {              /* child process */
+            if(i != 0 && cmds[i].pipefrom != -1) {                        /* no head */
+                pipefrom = cmds[i].pipefrom;
+                /*printf("%s pipefrom: %d\n", cmds[i].argv[0], pipefrom);
+                fflush(stdout);*/
+                dup2(pps[pipefrom].fds[0], fileno(stdin));
+                /*printf("dup %d to %d\n", pps[pipefrom].fds[0], fileno(stdin));
+                fflush(stdout);*/
+                close(pps[pipefrom].fds[0]);
+                /*close(pps[pipefrom].fds[1]);*/
+            }
+            if(i == cn - 2 && cmds[i].write_file == 1) {
+                /*printf("%d: pipeto %d\n", i, cmds[i].is_piped);
+                fflush(stdout);*/
+                dup2(filefd, fileno(stdout));
+                close(filefd);
+            } else if(i != cn - 1 && cmds[i].pipeto != -1) {                   /* no tail */
+                pipeto = cmds[i].pipeto;
+                /*printf("%s pipeto: %d\n", cmds[i].argv[0], pipeto);
+                fflush(stdout);*/
+                dup2(pps[pipeto].fds[1], fileno(stdout));
+                /*printf("dup %d to %d\n", pps[pipeto].fds[1], fileno(stdout));
+                fflush(stdout);*/
+                close(pps[pipeto].fds[1]);
+                /*close(pps[pipeto].fds[0]);*/
+            }
+            for(j = 0; j < cn; j++) {
+                /*printf("pps[%d]: %d,%d\n", j, pps[j].fds[0], pps[j].fds[1]);
+                fflush(stdout);*/
+                if(pps[j].is_set == 1) {
+                    close(pps[j].fds[0]);
+                    close(pps[j].fds[1]);
+                    pps[j].is_set = 0;
+                }
+            }
+            execvp(cmds[i].argv[0], cmds[i].argv);
+            perror("server: exec error");
+            exit(1);
+        } else {                            /* parent process */
+            if(i != 0 && cmds[i].pipefrom != -1) {                        /* no head */
+                pipefrom = cmds[i].pipefrom;
+                close(pps[pipefrom].fds[0]);
+                close(pps[pipefrom].fds[1]);
+            }
+            if(i == cn - 2 && cmds[i].write_file == 1)
+                i++;
+            if(i != cn - 1) {                   /* no tail */
+                /*pipeto = cmds[i].pipeto;
+                close(pps[pipeto].fds[1]);
+                close(pps[pipeto].fds[0]);*/
+                ;
+            }
+            waitpid(cpid, &status, 0);
+        }
+    }
+    for(i = 0; i < cn; i++) {
+        if(pps[i].is_set == 1) {
+            close(pps[i].fds[0]);
+            close(pps[i].fds[1]);
+            pps[i].is_set = 0;
+        }
+    }
+    return;
+}
+
+void clear_line(struct cmd cmds[], int cn) {
+    int i = 0;
+    for(i = 0; i < cn; i++)
         free(cmds[i].argv);
     return;
 }
@@ -202,7 +341,7 @@ void do_magic(struct cmd cmds[], int cn) {
     return;
 }
 
-int execute_line(struct cmd cmds[], int cn) {
+int execute_line(struct cmd cmds[], int cn, struct pp pps[], int pn) {
     char *envar = NULL;
     int status = 0;
     if(strcmp(cmds[0].argv[0], "exit") == 0)
@@ -217,16 +356,19 @@ int execute_line(struct cmd cmds[], int cn) {
         setenv(cmds[0].argv[1], cmds[0].argv[2], 1);
     }
     else
-        do_magic(cmds, cn);
+        do_magic2(cmds, cn, pps, pn);
 
     return status;
 }
 
 void connection_handler() {
     struct cmd cmds[CMDLINE_LENGTH];
+    struct pp pps[CMDLINE_LENGTH];
     char buff[BUFF_SIZE];
     int line_len = 0;
     int cn = 0;
+    int pn = 0;
+    int i = 0;
     int status = 0;
     setenv("PATH", "bin:.", 1);
     printf(WELCOME);
@@ -239,7 +381,8 @@ void connection_handler() {
         else if(line_len == 1)                       /* enter key */
             continue;
         cn = parse_line(buff, cmds);
-        if((status = execute_line(cmds, cn)) == 1) {
+        pn = preprocess_line(cmds, cn, pps);
+        if((status = execute_line(cmds, cn, pps, pn)) == 1) {
             clear_line(cmds, cn);
             break;
         }
