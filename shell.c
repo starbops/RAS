@@ -100,6 +100,7 @@ void reaper(int sig) {
 }
 
 int read_line(int fd, char *buff) {
+    char *pch = NULL;
     int n = 0;
     memset(buff, 0, BUFF_SIZE);
     if((n = read(fd, buff, BUFF_SIZE)) < 0)
@@ -108,6 +109,14 @@ int read_line(int fd, char *buff) {
         n = 1;
     else
         buff[n-1] = '\0';
+    /* filter slash */
+    pch = strchr(buff, '/');
+    if(pch != NULL) {
+        fprintf(stderr, "You should not use '/'.\n");
+        fflush(stderr);
+        n = 1;
+    }
+
     return n;
 }
 
