@@ -172,6 +172,8 @@ void do_magic(struct cmd cmds[], int cn) {
     int new_pipefds[2];
     int old_pipefds[2];
     int status = 0;
+    if(cn > 1 && cmds[cn - 2].is_piped == 0)
+        filefd = open(cmds[cn - 1].argv[0], O_CREAT | O_RDWR, S_IREAD | S_IWRITE);
     for(i = 0; i < cn; i++) {
         if(i != cn - 1)                 /* no new pipe for last command */
             pipe(new_pipefds);
@@ -184,7 +186,6 @@ void do_magic(struct cmd cmds[], int cn) {
                 close(old_pipefds[0]);
             }
             if(i == cn - 2 && cmds[i].is_piped == 0) {
-                filefd = open(cmds[i + 1].argv[0], O_CREAT | O_RDWR, S_IREAD | S_IWRITE);
                 dup2(filefd, fileno(stdout));
                 close(filefd);
             } else if(i != cn - 1) {                        /* no tail */
@@ -199,9 +200,9 @@ void do_magic(struct cmd cmds[], int cn) {
                 close(old_pipefds[0]);
                 close(old_pipefds[1]);
             }
-            if(i == cn - 2 && cmds[i].is_piped == 0) {
-                cn--;
-            } else if(i != cn -1) {                        /* no tail */
+            if(i == cn - 2 && cmds[i].is_piped == 0)
+                i++;
+            if(i != cn -1) {                        /* no tail */
                 old_pipefds[0] = new_pipefds[0];
                 old_pipefds[1] = new_pipefds[1];
             }
