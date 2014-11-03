@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,8 +16,11 @@ struct cmd {
     char **argv;
     int argc;
     int is_piped;
+    /* -1: no pipe          *
+     *  0: file redirection *
+     *  1: normal pipe      *
+     * >1: numbered-pipe    */
 };
-
 void reaper(int);
 int send_msg(int, char *);
 int read_line(int, char *);
@@ -118,18 +122,29 @@ int parse_line(char *buff, struct cmd cmds[]) {
     int c = 0;                      /* command number */
     int i = 0;                      /* word number in whole command line */
     int w = 0;                      /* word number in single command */
+    int checkpoint = 0;             /* end of single command */
     pch = strtok(buff, " \n\r\t");
     for(i = 0; pch != NULL; i++) {
         tmp_cmd[i] = pch;
-        if(strcmp(pch, "|") == 0) {
+        if(strcmp(pch, ">") == 0) {         /* file redirection */
+            cmds[c].is_piped = 0;
+            checkpoint = 1;
+        } else if(strcmp(pch, "|") == 0) {  /* normal pipe */
+            cmds[c].is_piped = 1;
+            checkpoint = 1;
+        } else if(*pch - '|' == 0) {        /* numbered-pipe */
+            cmds[c].is_piped = (int)strtol(pch + 1, NULL, 10);
+            checkpoint = 1;
+        }
+        if(checkpoint == 1) {
             cmds[c].argv = (char **)malloc((i + 1) * sizeof(char *));
             for(w = 0; w < i; w++)
                 cmds[c].argv[w] = tmp_cmd[w];
             cmds[c].argv[w] = NULL; /* pipe character is not included */
             cmds[c].argc = w;
-            cmds[c].is_piped = 1;
             c++;
             i = -1;
+            checkpoint = 0;
         }
         pch = strtok(NULL, " \n\r\t");
     }
@@ -138,7 +153,7 @@ int parse_line(char *buff, struct cmd cmds[]) {
         cmds[c].argv[w] = tmp_cmd[w];
     cmds[c].argv[w] = NULL;
     cmds[c].argc = w;
-    cmds[c].is_piped = 0;
+    cmds[c].is_piped = -1;
 
     return c + 1;
 }
@@ -167,7 +182,7 @@ void do_magic(struct cmd cmds[], int cn) {
                 dup2(old_pipefds[0], fileno(stdin));
                 close(old_pipefds[0]);
             }
-            if(i != cn -1) {                        /* no tail */
+            if(i != cn - 1) {                        /* no tail */
                 close(new_pipefds[0]);
                 dup2(new_pipefds[1], fileno(stdout));
                 close(new_pipefds[1]);
