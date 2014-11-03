@@ -10,7 +10,7 @@
 #define CMDLINE_LENGTH 10240
 #define SINGLE_CMD_WORD 256
 #define WELCOME "****************************************\n** Welcome to the information server. **\n****************************************\n"
-#define PROMPT "% "
+#define PROMPT "%% "
 
 struct cmd {
     char **argv;
@@ -22,7 +22,6 @@ struct cmd {
      * >1: numbered-pipe    */
 };
 void reaper(int);
-int send_msg(int, char *);
 int read_line(int, char *);
 int parse_line(char *, struct cmd []);
 void clear_line(struct cmd [], int);
@@ -89,19 +88,6 @@ void reaper(int sig) {
     while(wait3(&status, WNOHANG, (struct rusage *)0) >= 0) {
     }
     return;
-}
-
-int send_msg(int fd, char *msg) {
-    char *sbuff = NULL;
-    int msg_len = strlen(msg);
-    int n = 0;
-    sbuff = (char *)malloc((msg_len + 1) * sizeof(char));
-    strncpy(sbuff, msg, strlen(msg) + 1);
-    sbuff[msg_len] = '\0';
-    if((n = write(fd, sbuff, strlen(msg))) < 0)
-        perror("server: write error");
-    free(sbuff);
-    return n;
 }
 
 int read_line(int fd, char *buff) {
@@ -222,8 +208,10 @@ int execute_line(struct cmd cmds[], int cn) {
     if(strcmp(cmds[0].argv[0], "exit") == 0)
         status = 1;
     else if(strcmp(cmds[0].argv[0], "printenv") == 0) {
-        if((envar = getenv(cmds[0].argv[1])) != NULL)
-            send_msg(fileno(stdout), envar);
+        if((envar = getenv(cmds[0].argv[1])) != NULL) {
+            printf("%s=%s\n", cmds[0].argv[1], envar);
+            fflush(stdout);
+        }
     }
     else if(strcmp(cmds[0].argv[0], "setenv") == 0) {
         setenv(cmds[0].argv[1], cmds[0].argv[2], 1);
@@ -241,9 +229,11 @@ void connection_handler() {
     int cn = 0;
     int status = 0;
     setenv("PATH", "bin:.", 1);
-    send_msg(fileno(stdout), WELCOME);
+    printf(WELCOME);
+    fflush(stdout);
     while(1) {
-        send_msg(fileno(stdout), PROMPT);
+        printf(PROMPT);
+        fflush(stdout);
         if((line_len = read_line(fileno(stdin), buff)) == 0)    /* client close connection */
             break;
         else if(line_len == 1)                       /* enter key */
