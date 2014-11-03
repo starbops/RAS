@@ -9,6 +9,7 @@
 #define BUFF_SIZE 10240
 #define CMDLINE_LENGTH 10240
 #define SINGLE_CMD_WORD 256
+#define ROOT_DIRECTORY "./ras"
 #define WELCOME "****************************************\n** Welcome to the information server. **\n****************************************\n"
 #define PROMPT "%% "
 
@@ -82,6 +83,7 @@ int main(int argc, char *argv[]) {
             dup2(connfd, fileno(stdin));
             dup2(connfd, fileno(stdout));
             dup2(connfd, fileno(stderr));
+            chdir(ROOT_DIRECTORY);
             connection_handler();
             exit(0);
         } else {                            /* parent process */
