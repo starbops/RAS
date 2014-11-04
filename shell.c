@@ -1,9 +1,15 @@
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
+#include <arpa/inet.h>      /* definitions for internet operations */
+#include <fcntl.h>          /* file control options */
+#include <netinet/in.h>     /* constants and structures needed for internet domain addresses */
+#include <signal.h>         /* signal() */
+#include <stdio.h>          /* declarations used in most input and output */
+#include <stdlib.h>         /* standard library definitions */
+#include <string.h>         /* string operations */
+#include <sys/socket.h>     /* definitions of structures needed for sockets */
+#include <sys/stat.h>       /* open() */
+#include <sys/types.h>      /* definitions of a number of data types used in system calls */
+#include <sys/wait.h>       /* wait(), wait3(), waitpid() */
+#include <unistd.h>         /* standard symbolic constants and types, for POSIX */
 
 #define SERV_PORT 5140
 #define BUFF_SIZE 10240
