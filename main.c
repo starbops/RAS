@@ -80,8 +80,7 @@ int main(char *argv[], int argc) {
 }
 
 void reaper(int sig) {
-    int status;
-    while(wait3(&status, WNOHANG, (struct rusage *)0) >= 0) {}
+    while(waitpid(-1, NULL, WNOHANG) > 0) {}
 }
 
 int read_line(char *buf, int size) {
